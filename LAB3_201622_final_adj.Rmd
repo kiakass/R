@@ -1,0 +1,605 @@
+---
+title: "LAB3 2020.10.22"
+output:
+  word_document: default
+  html_notebook: default
+  pdf_document: default
+editor_options: 
+  chunk_output_type: inline
+---
+
+
+```{r}
+library(ISLR)
+library(MASS)
+attach(Auto)
+attach(Boston)
+```
+
+<br /><br />
+
+### 1. (LOOCV using the LOOCV formula)
+##### - Note that the $h_i$ := $x_i(x^Tx)^{-1}x^T_i$ is the diagonal terms of H matrix - the \hat" matrix defined by
+
+$$ H = x(x^Tx)^{-1}x^T $$
+
+##### Why? diag() command can be used to extract the diagonal terms of a matrix.
+
+Least Squares 에 의해 ${\hat{y}} =x{\hat{\beta}}=x(x^Tx)^{-1}x^Ty$ 
+
+- The command poly(X, k) returns a matrix of $N_d*k$ consisted of data X,$X^2$, ... ,$X^k$, 
+where $N_d$ is the length of the data X. Since the first column of x is killed with 1's
+in order to estimate intercept, $β_0$, the column of 1's and the output of poly(X,k)
+should be combined together to form Nd $N_d * k + 1$ x matrix using cbind command.
+
+- Have you ever thoroughly examined the result of linear regression command, lm.fit
+in lm.fit<-lm(data, predictors) ? Try names(lm.fit) and explain the individ-
+ual components.
+
+<br />
+
+<h4>
+##### 1) Using above information, compute LOOCV test MSE in polynomial liner regression model to predict mpg using horsepower in Auto data set based on the LOOCV formula given in the lecture note. Confirm that the results agree with the LOOCV test MSE computed by actual linear regression for each cross validation data.
+</h4>
+
+<br /><br />
+
+
+```{r}
+test_MSE <- array(0L, c(10,length(mpg)))
+
+MSE_loocv <- rep(0,10)
+
+for (i in 1:10){
+  for (k in 1:length(mpg)){
+    train = (1:length(mpg))[-k]
+    polyn.fit = lm(mpg~poly(horsepower, i, raw=T), data=Auto, subset=train)
+    test_MSE[i,k] = mean((mpg-predict(polyn.fit, Auto))[-train]^2)
+  }
+  MSE_loocv[i]=mean(test_MSE[i,])
+}
+plot(1:10, MSE_loocv, type='b', xlab='Degree of polynomial', ylab='MSE')
+```
+
+<br /><br />
+
+<h2>
+### 2. (Bootstrapping for a simulated data)
+#####   - We will generate jointly Gaussian samples
+</h2>
+
+<br />
+using mvrnorm command. Do not forget to set a random seed before beginning your analysis.
+<br />
+
+<h3>
+##### 1) Generate 1,000 samples of jointly Gaussian samples following above pdf. Plot histograms of X and Y and couple of linear combinations of X and Y , U = aX + bY for (a, b) in your choice.
+<h3>
+
+<br />
+
+```{r}
+set.seed (1234)
+Sigma <- matrix(c(1,0.5,0.5,1.25),2,2)
+XY=mvrnorm(n = 1000, rep(0, 2), Sigma, empirical = TRUE)
+BootData=data.frame(X=XY[,1],Y=XY[,2])
+
+alpha=0.4
+U=alpha*BootData$X+(1-alpha)*BootData$Y
+hist(U, main='plot histogram = U')
+
+cor(BootData)
+```
+
+<br /><br />
+
+##### 2) Using the 1,000 samples above, estimate
+$$α = \frac{\sigma^2_Y - \sigma_{XY}}{\sigma^2_X+\sigma^2_Y - 2\sigma_{XY}}$$
+<br />
+and repeat 1,000 times for newly generated 1,000 samples. Consequently, you should
+have 1,000 independent estimates of $α$.
+
+<br />
+
+```{r}
+Sigma <- matrix(c(1,0.5,0.5,1.25),2,2)
+Ns <- 1000
+Nb <- 1000
+hat_alpha <- rep(0,Nb)
+
+alpha.fn = function (data, index){
+  X=data$X[index]
+  Y=data$Y[index]
+  return((var(Y)- cov(X,Y))/(var(X)+var(Y)-2*cov(X,Y)))
+}
+
+for (i in 1:Nb ){
+  data=mvrnorm(n = Ns, rep(0, 2), Sigma)
+  data <- data.frame(X=data[,1], Y=data[,2])
+  hat_alpha[i] = alpha.fn( data, sample(1000, 1000, replace=F))
+}
+bar_alpha = mean(hat_alpha)
+SE_alpha = sqrt(sum((hat_alpha-bar_alpha)^2)/(Nb-1))
+
+cat('Using 1000 samples, estimate α : ',bar_alpha,  '\n\n')
+cat('Using 1000 samples, estimate α : ',SE_alpha,  '\n\n')
+```
+
+<br /><br />
+
+##### 3) Compute the sample mean of the 1,000 estimates of $\alpha$ and the standard error, that is the sample standard deviation, Plot histogram and boxplot.
+
+<br /><br />
+
+```{r}
+
+cat('# newly generated 1,000*1000 sampling \n')
+cat('sample mean of α_hat : ', bar_alpha,'\n')
+cat('standard deviation of α_hat : ', sd(hat_alpha))
+
+par(mfrow=c(1,2))
+hist(hat_alpha, main="histogram alpha")
+boxplot(hat_alpha, main='boxplot alpha')
+```
+
+<br />
+<br /><br />
+
+<h4>
+##### 4) Now assume that you have only 1,000 samples of the above Gaussian. Using sample command with replace=TRUE generate bootstrapping data of the size 1,000 and estimate  $\alpha$  using the data. Repeat this 1,000 times (i.e, B = 1,000). Compute mean and standard deviation of the 1,000 estimates of $\alpha$  using bootstrapping. Plot histogram and boxplot.
+</h4>
+<br /><br />
+
+```{r}
+set.seed (1234)
+alpha.fn = function (data, index){
+  X=data$X[index]
+  Y=data$Y[index]
+  return((var(Y)- cov(X,Y))/(var(X)+var(Y)-2*cov(X,Y)))
+}
+
+acc_alpha_t <- rep(0,1000)
+for (i in 1:1000 ){
+  acc_alpha_t[i] = alpha.fn( BootData, sample(1000, 1000, replace=T))
+}
+
+cat('Using Bootstraping \n')
+cat('sample mean of α_hat : ', mean(acc_alpha_t),'\n')
+cat('standard deviation of α_hat : ', sd(acc_alpha_t))
+
+par(mfrow=c(1,2))
+hist(acc_alpha_t, main="histogram alpha")
+boxplot(hat_alpha,acc_alpha_t, main='boxplot alpha')
+```
+
+
+<br /><br />
+
+##### 5) Comment on two results.
+<br />
+
+**ANS: 3) 과 4) 모두 standard deviation 2.6% 유사하여 boostrap으로 $\alpha$ 추정할 수 있음**
+
+<br /><br />
+
+Now you can use any tool provided in R package.
+
+### 3. (Test MSE for simulated data)
+#####  1) Generate a simulated data set as follows:
+
+<br /><br />
+
+```{r}
+set.seed (123)
+x <- rnorm (100)
+y <- x - 2*x^2+ rnorm (100)
+```
+
+<br /><br />
+
+In this data set, what is n and what is p? Write out the model used to generate the
+data in equation form.
+
+<br />
+
+**ANS : n=100, p=2 , equation form : $Y = x - 2*x^2 + \epsilon$**
+
+<br /><br />
+
+<h3>
+##### 2) Create a scatterplot of X against Y . Comment on what you find.
+</h3>
+
+<br />
+
+```{r}
+plot(x,y)
+```
+
+<br />
+**plot 이 2차 함수 형태임**
+<br />
+
+##### 3) Compute the LOOCV errors that result from fitting the following four models using
+least squares:
+<br />
+
+<h3>
+
+
+$1. Y = \beta_0 + \beta_1X + \epsilon$  
+$2. Y = \beta_0 + \beta_1X + + \beta_2X^2 + \epsilon$  
+$3. Y = \beta_0 + \beta_1X + + \beta_2X^2 + \beta_3X^3 + \epsilon$  
+$4. Y = \beta_0 + \beta_1X + + \beta_2X^2 + \beta_3X^3 + \beta_4X^4 + \epsilon$  
+
+
+<br />
+
+Note you may find it helpful to use the data.frame() function to create a single data set containing both X and Y.
+
+</h3>
+
+<br /><br />
+
+```{r}
+set.seed (1)
+x <- rnorm (100)
+y <- x - 2*x^2+ rnorm (100)
+
+loocv.fn = function (s){
+  
+  set.seed(s)
+
+  data <- data.frame(x=x,y=y)
+  
+  test_MSE <- array(0L, c(4,nrow(data[1])))
+
+  MSE_loocv <- rep(0,4)
+  
+  for (i in 1:4){
+    for (k in 1:nrow(data[1])){
+      train = (1:nrow(data[1]))[-k]
+      polyn.fit = lm(data$y~poly(data$x, i, raw=T), data=data, subset=train)
+      test_MSE[i,k] <- mean((data$y-predict(polyn.fit, data))[-train]^2)
+    }
+    MSE_loocv[i]=mean(test_MSE[i,])
+  }
+  cat('seed : ',s,',', 'MSE_loocv : ', MSE_loocv,'\n')
+  plot(1:4, MSE_loocv, type='b', xlab='Degree of polynomial', ylab='MSE')
+}
+
+loocv.fn(1)
+
+```
+
+
+
+<br /><br />
+
+##### 4) Repeat 3) using another random seed, and report your results. Are your results the same as what you got in 3)? Why?
+
+<br /><br />
+<br /><br />
+
+```{r}
+library(boot)
+
+set.seed(1)
+x <- rnorm(100)
+y <- x - 2*x^2+ rnorm(100)
+
+MSE_loocv <- rep(0,4)
+
+glm.fn = function (s){
+  for (i in 1:4){
+
+    dt = data.frame(x, y)
+    
+    glm.fit <- glm(y~poly(x, i))
+    MSE_loocv[i] <- cv.glm(dt, glm.fit)$delta[1]
+  }
+  cat('MSE_loocv', MSE_loocv,'\n')
+}
+
+glm.fn(1)
+glm.fn(10)
+```
+
+<br /><br />
+
+ANS : random seed 를 1 vs 10 으로 변경 하였을 경우 동일함.  
+LOOCV 의 CV 계산시  
+데이터가 변하지 않고, k번째 값을 순차적으로 빼서 test error$(Y-{\hat{Y}})^2$ 을 계산하므로 MSE_loocv 동일해짐
+
+<br /><br />
+
+
+##### 5) Which of the models in 3) had the smallest LOOCV error? Is this what you expected? Explain your answer.
+
+<br /><br />
+
+**ANS : y is quadratic 이기 때문에 2번째 모델 일때 LOOCV error 가 가장 작다 **
+
+<br /><br />
+<br /><br />
+
+##### 6) Comment on the statistical significance of the coeficient estimates that results from fitting each of the models in 3) using least squares. Do these results agree with the conclusions drawn based on the cross-validation results?
+
+<br /><br />
+
+**ANS : **
+
+Error     1차      2차       3차       4차  
+-----------------------------------------------  
+MSE_loocv 7.288162 0.9374236 0.9566218 0.9539049  
+RSE       3.084    0.9928    0.9979    1.003  
+------------------------------------------------   
+1.1차함수 RSE=3.08 vs CV=7.29 불일치  p-value : 0.003  
+2.2차함수 RSE=0.99 vs CV=0.93 유사    p-value : 2.2e-16  
+3.3차함수 RSE=0.99 vs CV=0.95 유사    p-value : 2.2e-16  
+4.4차함수 RSE=1.00 vs CV=0.95 유사    p-value : 2.2e-16  
+
+
+<br /><br />
+
+### 4. Let us consider the test error of this logistic regression model using the validation set approach for logistic regression to predict the probability of default using income and balance on the Default data set. Do not forget to set a random seed before beginning your analysis.
+
+<br /><br />
+
+```{r}
+library(ISLR)
+head(Default)
+```
+
+<br /><br />
+
+##### 1) Fit a logistic regression model that uses income and balance to predict default.
+
+<br /><br />
+
+```{r}
+set.seed(1)
+glm.fit = glm(default ~ income+balance, data=Default, family="binomial")
+summary(glm.fit)
+```
+
+<br /><br />
+
+##### 2) Using the validation set approach, estimate the test error of this model. In order to do this, you must perform the following steps:
+<br />
+
+i. Split the sample set into a training set and a validation set.
+ii. Fit a multiple logistic regression model using only the training observations.
+iii. Obtain a prediction of default status for each individual in the validation set by computing the posterior probability of default for that individual, and classifying the individual to the default category if the posterior probability is greater than 0.5 .
+iv . Compute the validation set error, which is the fraction of the observations in
+the validation set that are misclassified
+
+<br /><br />
+
+```{r}
+set.seed(1)
+#i. Split the sample set into a training set and a validation set.
+train.index <- sample(c(1:dim(Default)[1]), dim(Default)[1]*0.8)
+train <- Default[train.index,]
+test <- Default[-train.index,]
+dim(train)
+
+#ii. Fit a multiple logistic regression model using only the training observations.
+glm.fit = glm(default ~ income+balance, data=train, family="binomial")
+summary(glm.fit)
+
+#iii. Obtain a prediction
+glm.pred <- predict(glm.fit, test, type="response" )
+glm.pred.default <- ifelse(glm.pred > 0.5,'Yes','No')
+
+# 값확인
+comp=data.frame(real=test$default, pred.prob=c(glm.pred), conv.pred=c(glm.pred.default))
+head(comp,10)
+#iv . Compute the validation set error, which is the fraction of the observations in the validation set that are misclassified
+
+table(glm.pred.default, test$default)
+mean(glm.pred.default!=test$default)
+
+```
+
+<br /><br />
+
+##### 3) Repeat the process in 2) three times, using three difierent splits of the observations into a training set and a validation set. Comment on the results obtained.
+
+<br /><br />
+train:test set 비율 변경  
+9:1 -> test set Missclassified : 2.9 %  
+8:2 -> test set Missclassified : 2.6 %  
+7:3 -> test set Missclassified : 2.7 %  
+6:4 -> test set Missclassified : 2.5 %  
+
+train, test set의 변화에 따라 error 가 변함
+
+<br /><br />
+
+##### 4) Now consider a logistic regression model that predicts the probability of default using income, balance, student. Estimate the test error for this model using the validation set approach. Comment on whether or not including student leads to a reduction in the test error rate.
+
+<br /><br />
+
+```{r}
+set.seed(1)
+#i.
+train.index <- sample(c(1:dim(Default)[1]), dim(Default)[1]*0.7)
+train <- Default[train.index,]
+test <- Default[-train.index,]
+dim(train)
+#ii.
+glm.fit <- glm(default ~ income+balance+student, data=train, family='binomial')
+summary(glm.fit)
+
+#iii.
+
+glm.pred <- predict(glm.fit, test, type="response" )
+glm.pred.default <- ifelse(glm.pred > 0.5,'Yes','No')
+
+comp=data.frame(real=test$default, pred.prob=c(glm.pred), conv.pred=c(glm.pred.default))
+
+#iv
+table(glm.pred.default, test$default)
+mean(glm.pred.default!=test$default)
+
+```
+
+<br /><br />
+**ANS : studuent 는 에러율을 감소 시키지 못함 **
+<br /><br />
+
+<h2>
+### 5. Consider the Boston housing data set, from the MASS library.
+</h2>
+
+<br /><br />
+
+
+##### 1) Based on this data set, provide an estimate for the population mean of medv. Call this estimate û.
+- 모평균
+
+<br /><br />
+
+```{r}
+medv.mean <- mean(medv)
+medv.err <- sd(medv)/sqrt(length(medv))
+cat('Population mean of medv : ', mean(medv),'\n')
+cat('Population standard error of medv : ', medv.err ,'\n')
+```
+
+<br /><br />
+
+<h2>
+##### 2) Provide an estimate of the standard error of û. Interpret this result. 모평균 SE
+</h2>
+
+<br /><br />
+
+```{r}
+medv.err <- sd(medv)/sqrt(length(medv))
+cat('Population standard error of medv : ', medv.err ,'\n')
+```
+
+<br /><br />
+**ANS : **
+<br /><br />
+
+<h2>
+##### 3) Now estimate the standard error of û using the bootstrap. How does this compare to your answer from (b)?
+</h2>
+
+<br /><br />
+
+```{r}
+set.seed(2)
+acc_mu <- rep(0,1000)
+acc_sd <- rep(0,1000)
+Nb <- 1000
+
+for (i in 1:1000 ){
+  sam_mu = sample(medv, 1000, replace=T)
+  acc_mu[i] = mean(sam_mu)
+  acc_sd[i] = sd(sam_mu)/sqrt(length(medv))
+}
+bar_mu <- mean(acc_mu)
+bar_sd <- mean(acc_sd)
+err_sd <- sqrt(sum((acc_sd-bar_sd)^2)/(Nb-1))
+sd(sam_mu)/sqrt(length(medv))
+
+cat('# Using Bootstraping \n')
+cat('mean of û : ', bar_mu,'\n')
+cat('standard deviation of û : ', bar_sd,'\n')
+cat('standard error of û : ', sqrt(sum((acc_mu-bar_mu)^2)/(Nb-1)),'\n')
+
+boot.fn = function (data, index) return(mean(data[index]))
+boot(medv, boot.fn, R=1000)
+```
+
+<br /><br />
+**ANS : b) 0.85 vs. c) 0.30 으로 SE(û) 는 다르다. û의 variation 을 데이터만으로 추정할수 없음.**
+<br /><br />
+
+<h2>
+##### 4) Based on your bootstrap estimate from 3), provide a 95% confidence interval for the mean of medv. Compare it to the results obtained using t.test (Boston$medv). Hint: You can approximate a 95% confidence interval using the formula
+</h2>
+
+<br />
+
+$$[ {\hat {u}} - 2SE({\hat {u}}), {\hat {u}} + 2SE({\hat {u}}) ]$$
+<br />
+
+```{r}
+t.test(Boston$medv)
+a = mean(acc_mu) - 2*sd(acc_mu)
+b = mean(acc_mu) + 2*sd(acc_mu)
+cat(a,b)
+```
+
+<br /><br />
+**ANS :  [ 21.95105, 23.10004 ]**
+<br /><br />
+
+<h2>
+##### 5) Based on this data set, provide an estimate, ${\hat {u}}_{med}$, for the median value of medv in the population.
+</h2>
+
+<br /><br />
+
+```{r}
+mdev.med = median(medv)
+cat('median of û : ', mdev.med,'\n')
+```
+
+
+<br /><br />
+
+<h2>
+##### 6) We now would like to estimate the standard error of ${\hat {u}}_{med}$. Unfortunately, there is no simple formula for computing the standard error of the median. Instead, estimate the standard error of the median using the bootstrap. Comment on your findings.
+</h2>
+
+<br /><br />
+
+```{r}
+boot.fn = function (data, index) return(median(data[index]))
+boot(medv, boot.fn, R=1000)
+```
+
+<br /><br />
+**ANS : Boostraping 을 이용해서 1,000개의 중앙값을 구하고,** 
+      **median is equal to (5), standard error of 0.37 is relatively small **
+
+<br /><br />
+
+<h2>
+##### 7) Based on this data set, provide an estimate for the tenth percentile of medv in Boston
+suburbs. Call this quantity ${\hat {u}}_{0.1}$. (You can use the quantile( ) function.)
+</h2>
+
+<br /><br />
+
+```{r}
+quantile(medv, probs=c(0.1))
+
+```
+
+<br /><br />
+
+<h2>
+##### 8) Use the bootstrap to estimate the standard error of ${\hat {u}}_{0.1}$. Comment on your findings.
+</h2>
+
+<br /><br />
+
+
+```{r}
+boot.fn = function (data, index) return(quantile(data[index],c(0.1)))
+boot(medv, boot.fn, R=1000)
+```
+
+<br /><br />
+**ANS : Boostraping 을 이용해서 1,000개의 10분위수를 구하였음**
+        tenth pecentile value of 12.75 which is again equal to the value in (7), standard error of 0.508 relatively small compared to percentile value 
+<br /><br />
+
+
